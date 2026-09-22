@@ -1,61 +1,96 @@
 ```yaml
+# 工作流名称，会显示在 GitHub Actions 页面
 name: Mirror Release
 
+# 设置什么时候运行这个工作流
 on:
+  # 允许你在 GitHub Actions 页面手动运行
   workflow_dispatch:
+
+    # 手动运行时提供输入参数
     inputs:
+
+      # 选择要同步的软件
       software:
         description: "选择要同步的软件"
         required: true
         type: choice
+
+        # 可以选择的三个软件
         options:
           - FlClash
           - v2rayN
           - v2rayNG
 
+      # 输入官方 Release 的版本号
       version:
-        description: "官方 Release Tag，例如 v0.8.98"
+        description: "官方 Release 版本号，例如 v0.8.98"
         required: true
         type: string
 
+# 给 GitHub Actions 授予修改仓库内容的权限
 permissions:
   contents: write
 
+# 工作流中的任务
 jobs:
+
+  # 同步 Release
   mirror:
+
+    # 使用 GitHub 提供的 Ubuntu 临时环境
     runs-on: ubuntu-latest
 
+    # 开始执行步骤
     steps:
+
+      # 根据选择的软件设置对应的 GitHub 仓库
       - name: 设置软件信息
         id: info
         shell: bash
         run: |
+
+          # 获取用户选择的软件
           SOFTWARE="${{ inputs.software }}"
+
+          # 获取用户输入的版本号
           VERSION="${{ inputs.version }}"
 
+          # 根据软件名称选择官方仓库
           case "$SOFTWARE" in
+
+            # FlClash 官方仓库
             FlClash)
               REPO="chen08209/FlClash"
               ;;
+
+            # v2rayN 官方仓库
             v2rayN)
               REPO="2dust/v2rayN"
               ;;
+
+            # v2rayNG 官方仓库
             v2rayNG)
               REPO="2dust/v2rayNG"
               ;;
+
+            # 如果输入的软件不在列表中则退出
             *)
               echo "未知的软件：$SOFTWARE"
               exit 1
               ;;
           esac
 
+          # 输出给后面的步骤使用
           echo "repo=$REPO" >> "$GITHUB_OUTPUT"
           echo "software=$SOFTWARE" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: 创建临时目录
-        run: mkdir -p release-assets
+      # 安装 GitHub CLI
+      - name: 检查 GitHub CLI
+        run: gh --version
 
+      # 下载官方 Release Asset
       - name: 获取官方 Release 文件
         env:
           GH_TOKEN: ${{ github.token }}
@@ -63,6 +98,17 @@ jobs:
           VERSION: ${{ steps.info.outputs.version }}
         shell: bash
         run: |
+
+          # 创建临时下载目录
+          mkdir -p release-assets
+
+          # 从官方 Release 下载文件
+          #
+          # --pattern：
+          # 只下载 exe、apk、zip
+          #
+          # --dir：
+          # 指定 GitHub Actions 临时目录
           gh release download "$VERSION" \
             --repo "$REPO" \
             --pattern "*.exe" \
@@ -70,45 +116,53 @@ jobs:
             --pattern "*.zip" \
             --dir release-assets
 
-          echo "获取到的文件："
+          # 显示下载到的文件
+          echo "以下文件将被上传："
           ls -lh release-assets
 
+      # 检查有没有成功获取文件
       - name: 检查文件
         shell: bash
         run: |
+
+          # 如果目录为空则停止工作流
           if [ -z "$(find release-assets -type f -print -quit)" ]; then
-            echo "没有找到 .exe、.apk 或 .zip 文件"
+            echo "没有找到 .exe / .apk / .zip 文件"
             exit 1
           fi
 
-      - name: 创建 GitHub Release
+      # 创建自己的 GitHub Release
+      - name: 创建镜像 Release
         env:
           GH_TOKEN: ${{ github.token }}
           SOFTWARE: ${{ steps.info.outputs.software }}
           VERSION: ${{ steps.info.outputs.version }}
-          REPO: ${{ steps.info.outputs.repo }}
         shell: bash
         run: |
+
+          # 为自己的 Release 创建唯一 Tag
           TAG="${SOFTWARE,,}-${VERSION}"
 
-          NOTES="这是 ${SOFTWARE} 官方 Release 的非官方镜像。
-
-          原项目：
-          https://github.com/${REPO}
-
-          官方版本：
-          ${VERSION}
-
-          本 Release 未修改原始软件文件。
-
-          本仓库与原项目官方开发团队没有隶属关系。
-
-          软件版权、许可证及相关声明请以原项目为准。"
-
+          # 创建 Release
           gh release create "$TAG" \
-            --title "${SOFTWARE} ${VERSION}" \
-            --notes "$NOTES"
+            --title "$SOFTWARE $VERSION" \
+            --notes "## $SOFTWARE $VERSION
 
+本 Release 为官方 Release 的非官方镜像。
+
+原项目：
+https://github.com/${{ steps.info.outputs.repo }}
+
+官方版本：
+$VERSION
+
+本仓库未修改软件文件。
+
+请以原项目的官方仓库、许可证及发布说明为准。
+
+本仓库与原项目官方开发团队没有隶属关系。"
+
+      # 将文件上传到刚刚创建的 Release
       - name: 上传 Release 文件
         env:
           GH_TOKEN: ${{ github.token }}
@@ -116,11 +170,12 @@ jobs:
           VERSION: ${{ steps.info.outputs.version }}
         shell: bash
         run: |
+
+          # 生成自己的 Release Tag
           TAG="${SOFTWARE,,}-${VERSION}"
 
+          # 上传所有 exe、apk、zip
           gh release upload "$TAG" \
             release-assets/* \
             --clobber
-
-          echo "Release 上传完成：$TAG"
 ```
