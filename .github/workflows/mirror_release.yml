@@ -4,14 +4,13 @@ on:
   workflow_dispatch:
     inputs:
       software:
-        description: "选择要同步的软件"
+        description: "选择软件"
         required: true
         type: choice
         options:
           - FlClash
           - v2rayN
           - v2rayNG
-
       version:
         description: "官方 Release Tag，例如 v0.8.98"
         required: true
@@ -25,111 +24,79 @@ jobs:
     runs-on: ubuntu-24.04
 
     steps:
-
-      # 检出自己的仓库
-      - name: 检出当前仓库
-        uses: actions/checkout@v4
-
-      # 设置官方仓库
-      - name: 设置软件信息
+      - name: 设置软件仓库
         id: info
         shell: bash
         run: |
-          if [ "${{ inputs.software }}" = "FlClash" ]; then
-            echo "repo=chen08209/FlClash" >> "$GITHUB_OUTPUT"
-          elif [ "${{ inputs.software }}" = "v2rayN" ]; then
-            echo "repo=2dust/v2rayN" >> "$GITHUB_OUTPUT"
-          elif [ "${{ inputs.software }}" = "v2rayNG" ]; then
-            echo "repo=2dust/v2rayNG" >> "$GITHUB_OUTPUT"
-          else
-            echo "未知的软件"
-            exit 1
-          fi
+          case "${{ inputs.software }}" in
+            FlClash)
+              echo "repo=chen08209/FlClash" >> "$GITHUB_OUTPUT"
+              ;;
+            v2rayN)
+              echo "repo=2dust/v2rayN" >> "$GITHUB_OUTPUT"
+              ;;
+            v2rayNG)
+              echo "repo=2dust/v2rayNG" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "未知的软件"
+              exit 1
+              ;;
+          esac
 
           echo "software=${{ inputs.software }}" >> "$GITHUB_OUTPUT"
           echo "version=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
 
-      # 创建下载目录
-      - name: 创建临时目录
+      - name: 创建下载目录
         run: mkdir -p release-assets
 
-      # 下载官方 Release 的全部附件
-      - name: 下载官方 Release
+      - name: 下载官方 Release 全部文件
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          echo "官方仓库：${{ steps.info.outputs.repo }}"
-          echo "官方版本：${{ steps.info.outputs.version }}"
-
-          gh release download \
-            "${{ steps.info.outputs.version }}" \
+          gh release download "${{ steps.info.outputs.version }}" \
             --repo "${{ steps.info.outputs.repo }}" \
             --dir release-assets
 
-      # 显示下载结果
       - name: 显示下载文件
         run: |
-          echo "下载完成："
+          echo "下载的文件："
+          find release-assets -maxdepth 1 -type f -printf '%f\n' | sort
           echo ""
+          echo "文件数量：$(find release-assets -maxdepth 1 -type f | wc -l)"
+          echo "总大小：$(du -sh release-assets | cut -f1)"
 
-          find release-assets \
-            -maxdepth 1 \
-            -type f \
-            -printf '%f\n' \
-            | sort
-
-          echo ""
-          echo "文件数量："
-
-          find release-assets \
-            -maxdepth 1 \
-            -type f \
-            | wc -l
-
-          echo ""
-          echo "总大小："
-
-          du -sh release-assets
-
-      # 检查下载结果
       - name: 检查下载结果
         run: |
           if [ -z "$(find release-assets -maxdepth 1 -type f -print -quit)" ]; then
-            echo "错误：没有下载到文件"
+            echo "没有下载到文件"
             exit 1
           fi
 
-          echo "文件检查通过"
-
-      # 生成自己的 Release Tag
       - name: 设置 Release Tag
         id: release
         shell: bash
         run: |
           SOFTWARE="$(echo "${{ steps.info.outputs.software }}" | tr '[:upper:]' '[:lower:]')"
           TAG="${SOFTWARE}-${{ steps.info.outputs.version }}"
-
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "Release Tag：$TAG"
+          echo "Release Tag: $TAG"
 
-      # 创建 Release，如果已经存在就跳过
-      - name: 创建镜像 Release
+      - name: 创建 Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="${{ steps.release.outputs.tag }}"
 
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "Release 已经存在：$TAG"
+          if gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "Release 已存在：$TAG"
           else
-            echo "正在创建 Release：$TAG"
-
             gh release create "$TAG" \
+              --repo "${{ github.repository }}" \
               --title "${{ steps.info.outputs.software }} ${{ steps.info.outputs.version }}" \
               --notes "非官方镜像。原项目：https://github.com/${{ steps.info.outputs.repo }}"
           fi
 
-      # 逐个上传所有文件
       - name: 上传全部文件
         env:
           GH_TOKEN: ${{ github.token }}
@@ -139,22 +106,15 @@ jobs:
           for FILE in release-assets/*; do
             if [ -f "$FILE" ]; then
               echo "上传：$(basename "$FILE")"
-
-              gh release upload \
-                "$TAG" \
-                "$FILE" \
+              gh release upload "$TAG" "$FILE" \
+                --repo "${{ github.repository }}" \
                 --clobber
             fi
           done
 
-          echo "全部文件上传完成"
-
-      # 最终确认
-      - name: 同步完成
+      - name: 完成
         run: |
-          echo "========================================"
-          echo "同步成功"
-          echo "========================================"
+          echo "同步完成"
           echo "软件：${{ steps.info.outputs.software }}"
           echo "版本：${{ steps.info.outputs.version }}"
           echo "Release：${{ steps.release.outputs.tag }}"
