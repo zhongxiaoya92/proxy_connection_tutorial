@@ -11,8 +11,9 @@ on:
           - FlClash
           - v2rayN
           - v2rayNG
+
       version:
-        description: "官方 Release Tag"
+        description: "官方 Release Tag，例如 v0.8.98"
         required: true
         type: string
 
@@ -24,6 +25,7 @@ jobs:
     runs-on: ubuntu-24.04
 
     steps:
+
       - name: 设置官方仓库
         run: |
           if [ "${{ inputs.software }}" = "FlClash" ]; then
@@ -33,38 +35,65 @@ jobs:
           elif [ "${{ inputs.software }}" = "v2rayNG" ]; then
             echo "REPO=2dust/v2rayNG" >> "$GITHUB_ENV"
           else
+            echo "未知的软件"
             exit 1
           fi
 
-      - name: 下载官方全部文件
+      - name: 下载官方 Release 全部文件
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p release-assets
-          gh release download "${{ inputs.version }}" --repo "$REPO" --dir release-assets
 
-      - name: 检查文件
+          gh release download \
+            "${{ inputs.version }}" \
+            --repo "$REPO" \
+            --dir release-assets
+
+      - name: 检查下载结果
         run: |
-          COUNT=$(find release-assets -type f | wc -l)
-          echo "文件数量：$COUNT"
+          echo "官方仓库：$REPO"
+          echo "官方版本：${{ inputs.version }}"
+          echo ""
+          echo "下载的文件："
+
           find release-assets -maxdepth 1 -type f -printf '%f\n' | sort
+
+          COUNT=$(find release-assets -maxdepth 1 -type f | wc -l)
+
+          echo ""
+          echo "文件数量：$COUNT"
+
           if [ "$COUNT" -eq 0 ]; then
+            echo "没有下载到 Release 文件"
             exit 1
           fi
 
-      - name: 设置 Release 名称
+      - name: 设置镜像 Release Tag
         run: |
-          SOFTWARE=$(echo "${{ inputs.software }}" | tr '[:upper:]' '[:lower:]')
-          echo "TAG=${SOFTWARE}-${{ inputs.version }}" >> "$GITHUB_ENV"
+          if [ "${{ inputs.software }}" = "FlClash" ]; then
+            echo "TAG=flclash-${{ inputs.version }}" >> "$GITHUB_ENV"
+          elif [ "${{ inputs.software }}" = "v2rayN" ]; then
+            echo "TAG=v2rayn-${{ inputs.version }}" >> "$GITHUB_ENV"
+          elif [ "${{ inputs.software }}" = "v2rayNG" ]; then
+            echo "TAG=v2rayng-${{ inputs.version }}" >> "$GITHUB_ENV"
+          else
+            exit 1
+          fi
 
       - name: 创建或使用已有 Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+          if gh release view "$TAG" --repo "${{ github.repository }}" > /dev/null 2>&1; then
             echo "Release 已存在：$TAG"
           else
-            gh release create "$TAG" --repo "${{ github.repository }}" --title "${{ inputs.software }} ${{ inputs.version }}" --notes "非官方镜像。原项目：https://github.com/$REPO"
+            echo "创建 Release：$TAG"
+
+            gh release create "$TAG" \
+              --repo "${{ github.repository }}" \
+              --title "${{ inputs.software }} ${{ inputs.version }}" \
+              --notes "非官方镜像。原项目：https://github.com/$REPO"
           fi
 
       - name: 上传全部文件
@@ -72,13 +101,22 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           for FILE in release-assets/*; do
-            [ -f "$FILE" ] || continue
-            echo "上传：$(basename "$FILE")"
-            gh release upload "$TAG" "$FILE" --repo "${{ github.repository }}" --clobber
+            if [ -f "$FILE" ]; then
+              echo "上传：$(basename "$FILE")"
+
+              gh release upload \
+                "$TAG" \
+                "$FILE" \
+                --repo "${{ github.repository }}" \
+                --clobber
+            fi
           done
 
       - name: 完成
         run: |
+          echo "================================"
           echo "同步完成"
-          echo "Release: $TAG"
-```
+          echo "软件：${{ inputs.software }}"
+          echo "版本：${{ inputs.version }}"
+          echo "Release：$TAG"
+          echo "================================"
