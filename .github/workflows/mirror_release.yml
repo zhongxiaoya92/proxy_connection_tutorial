@@ -1,3 +1,4 @@
+```yaml
 name: Mirror Release
 
 on:
@@ -25,24 +26,46 @@ jobs:
     runs-on: ubuntu-24.04
 
     steps:
-      # 检出你自己的仓库
-      # gh release create 需要当前目录存在 Git 仓库
+
+      # ============================================================
+      # 1. 检出你自己的 GitHub 仓库
+      # ============================================================
+      # gh release create / upload 需要当前目录是 Git 仓库
       - name: 检出当前仓库
         uses: actions/checkout@v4
 
-      # 根据软件名称确定官方 GitHub 仓库
+
+      # ============================================================
+      # 2. 设置官方仓库信息
+      # ============================================================
+      # 根据你在 Run workflow 中选择的软件，
+      # 自动决定应该从哪个官方 GitHub 仓库下载。
       - name: 设置软件信息
         id: info
+        shell: bash
         run: |
+
+          # FlClash 官方仓库
           if [ "${{ inputs.software }}" = "FlClash" ]; then
+
             echo "repo=chen08209/FlClash" >> "$GITHUB_OUTPUT"
+
+          # v2rayN 官方仓库
           elif [ "${{ inputs.software }}" = "v2rayN" ]; then
+
             echo "repo=2dust/v2rayN" >> "$GITHUB_OUTPUT"
+
+          # v2rayNG 官方仓库
           elif [ "${{ inputs.software }}" = "v2rayNG" ]; then
+
             echo "repo=2dust/v2rayNG" >> "$GITHUB_OUTPUT"
+
+          # 如果输入了未知软件
           else
-            echo "未知的软件"
+
+            echo "未知的软件：${{ inputs.software }}"
             exit 1
+
           fi
 
           # 保存软件名称
@@ -51,64 +74,216 @@ jobs:
           # 保存官方 Release Tag
           echo "version=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
 
-      # 创建临时目录
+
+      # ============================================================
+      # 3. 创建临时下载目录
+      # ============================================================
       - name: 创建临时目录
         run: mkdir -p release-assets
 
-      # 下载官方 Release 的全部文件
+
+      # ============================================================
+      # 4. 下载官方 Release 的全部附件
+      # ============================================================
+      # 注意：
+      # 这里没有 --pattern "*.exe"
+      # 因此不会限制文件类型。
+      #
+      # 官方 Release 中有什么文件，就全部下载什么文件。
+      #
+      # 例如：
+      # Windows  -> .exe
+      # Android  -> .apk
+      # Linux    -> .AppImage / .deb / .rpm / .tar.gz
+      # macOS    -> .dmg / .zip / .tar.gz
+      # 以及官方未来增加的其他格式。
       - name: 下载官方 Release 全部文件
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release download "${{ steps.info.outputs.version }}" \
+
+          echo "========================================"
+          echo "官方仓库：${{ steps.info.outputs.repo }}"
+          echo "官方版本：${{ steps.info.outputs.version }}"
+          echo "========================================"
+
+          gh release download \
+            "${{ steps.info.outputs.version }}" \
             --repo "${{ steps.info.outputs.repo }}" \
             --dir release-assets
 
-      # 显示下载结果
+
+      # ============================================================
+      # 5. 显示下载结果
+      # ============================================================
       - name: 显示下载文件
         run: |
-          echo "=============================="
-          echo "官方 Release 文件："
-          echo "=============================="
 
-          find release-assets -maxdepth 1 -type f -printf '%f\n' | sort
+          echo "========================================"
+          echo "下载完成"
+          echo "========================================"
 
           echo ""
-          echo "=============================="
+          echo "文件列表："
+
+          find release-assets \
+            -maxdepth 1 \
+            -type f \
+            -printf '%f\n' \
+            | sort
+
+          echo ""
+          echo "========================================"
           echo "文件数量："
-          find release-assets -maxdepth 1 -type f | wc -l
+
+          find release-assets \
+            -maxdepth 1 \
+            -type f \
+            | wc -l
 
           echo ""
-          echo "=============================="
-          echo "文件大小："
+          echo "========================================"
+          echo "总大小："
+
           du -sh release-assets
 
-      # 确认确实下载到了文件
-      - name: 检查文件
+
+      # ============================================================
+      # 6. 检查是否成功下载文件
+      # ============================================================
+      - name: 检查下载结果
         run: |
+
           if [ -z "$(find release-assets -maxdepth 1 -type f -print -quit)" ]; then
-            echo "没有找到官方 Release 文件"
+
+            echo "错误：官方 Release 没有下载到任何文件"
             exit 1
+
           fi
 
-      # 创建你自己的 Release
-      - name: 创建 Release
+          echo "文件检查通过"
+
+
+      # ============================================================
+      # 7. 生成你自己的 Release Tag
+      # ============================================================
+      # 例如：
+      #
+      # FlClash + v0.8.98
+      # ↓
+      # flclash-v0.8.98
+      #
+      # v2rayN + v7.16.4
+      # ↓
+      # v2rayn-v7.16.4
+      #
+      # v2rayNG + v1.10.4
+      # ↓
+      # v2rayng-v1.10.4
+      - name: 设置镜像 Release Tag
+        id: release
+        shell: bash
+        run: |
+
+          SOFTWARE="$(echo "${{ steps.info.outputs.software }}" | tr '[:upper:]' '[:lower:]')"
+
+          TAG="${SOFTWARE}-${{ steps.info.outputs.version }}"
+
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+          echo "镜像 Release Tag：$TAG"
+
+
+      # ============================================================
+      # 8. 创建 Release
+      # ============================================================
+      # 如果 Release 不存在：
+      #     创建它
+      #
+      # 如果 Release 已经存在：
+      #     不报错
+      #     直接跳过创建
+      - name: 创建镜像 Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          TAG="$(echo "${{ steps.info.outputs.software }}" | tr '[:upper:]' '[:lower:]')-${{ steps.info.outputs.version }}"
 
-          gh release create "$TAG" \
-            --title "${{ steps.info.outputs.software }} ${{ steps.info.outputs.version }}" \
-            --notes "非官方镜像。原项目：https://github.com/${{ steps.info.outputs.repo }}"
+          TAG="${{ steps.release.outputs.tag }}"
 
-      # 上传全部文件
+          echo "检查 Release：$TAG"
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+
+            echo "Release 已存在：$TAG"
+            echo "跳过创建"
+
+          else
+
+            echo "Release 不存在"
+            echo "正在创建 Release..."
+
+            gh release create "$TAG" \
+              --title "${{ steps.info.outputs.software }} ${{ steps.info.outputs.version }}" \
+              --notes "非官方镜像。
+
+原项目：
+https://github.com/${{ steps.info.outputs.repo }}
+
+官方 Release：
+https://github.com/${{ steps.info.outputs.repo }}/releases/tag/${{ steps.info.outputs.version }}"
+
+          fi
+
+
+      # ============================================================
+      # 9. 上传全部官方文件
+      # ============================================================
+      # --clobber：
+      # 如果你的 Release 中已经存在同名文件，
+      # 就覆盖旧文件，而不是直接报错。
       - name: 上传全部文件
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          TAG="$(echo "${{ steps.info.outputs.software }}" | tr '[:upper:]' '[:lower:]')-${{ steps.info.outputs.version }}"
 
-          gh release upload "$TAG" \
+          TAG="${{ steps.release.outputs.tag }}"
+
+          echo "========================================"
+          echo "开始上传"
+          echo "Release：$TAG"
+          echo "========================================"
+
+          gh release upload \
+            "$TAG" \
             release-assets/* \
             --clobber
+
+          echo ""
+          echo "========================================"
+          echo "上传完成"
+          echo "========================================"
+
+
+      # ============================================================
+      # 10. 最终确认
+      # ============================================================
+      - name: 同步完成
+        run: |
+
+          echo ""
+          echo "========================================"
+          echo "同步成功"
+          echo "========================================"
+
+          echo "软件：${{ steps.info.outputs.software }}"
+          echo "版本：${{ steps.info.outputs.version }}"
+          echo "Release：${{ steps.release.outputs.tag }}"
+
+          echo ""
+          echo "官方仓库："
+          echo "https://github.com/${{ steps.info.outputs.repo }}"
+
+          echo ""
+          echo "你的 Release："
+          echo "https://github.com/${{ github.repository }}/releases/tag/${{ steps.release.outputs.tag }}"
+```
