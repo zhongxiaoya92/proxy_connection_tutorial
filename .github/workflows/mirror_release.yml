@@ -25,12 +25,12 @@ jobs:
     runs-on: ubuntu-24.04
 
     steps:
-      # 检出你自己的 GitHub 仓库
-      # 这样 gh release create 才能识别当前仓库
+      # 检出你自己的仓库
+      # gh release create 需要当前目录存在 Git 仓库
       - name: 检出当前仓库
         uses: actions/checkout@v4
 
-      # 根据选择的软件确定官方仓库
+      # 根据软件名称确定官方 GitHub 仓库
       - name: 设置软件信息
         id: info
         run: |
@@ -55,33 +55,43 @@ jobs:
       - name: 创建临时目录
         run: mkdir -p release-assets
 
-      # 从官方 GitHub Release 下载文件
-      - name: 下载官方 Release
+      # 下载官方 Release 的全部文件
+      - name: 下载官方 Release 全部文件
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release download "${{ steps.info.outputs.version }}" \
             --repo "${{ steps.info.outputs.repo }}" \
-            --pattern "*.exe" \
-            --pattern "*.apk" \
-            --pattern "*.zip" \
             --dir release-assets
 
-      # 显示下载到的文件
-      - name: 显示文件
+      # 显示下载结果
+      - name: 显示下载文件
         run: |
-          echo "下载完成："
-          ls -lh release-assets
+          echo "=============================="
+          echo "官方 Release 文件："
+          echo "=============================="
+
+          find release-assets -maxdepth 1 -type f -printf '%f\n' | sort
+
+          echo ""
+          echo "=============================="
+          echo "文件数量："
+          find release-assets -maxdepth 1 -type f | wc -l
+
+          echo ""
+          echo "=============================="
+          echo "文件大小："
+          du -sh release-assets
 
       # 确认确实下载到了文件
       - name: 检查文件
         run: |
-          if [ -z "$(find release-assets -type f -print -quit)" ]; then
-            echo "没有找到需要同步的文件"
+          if [ -z "$(find release-assets -maxdepth 1 -type f -print -quit)" ]; then
+            echo "没有找到官方 Release 文件"
             exit 1
           fi
 
-      # 在你的仓库创建 Release
+      # 创建你自己的 Release
       - name: 创建 Release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -92,8 +102,8 @@ jobs:
             --title "${{ steps.info.outputs.software }} ${{ steps.info.outputs.version }}" \
             --notes "非官方镜像。原项目：https://github.com/${{ steps.info.outputs.repo }}"
 
-      # 把下载的文件上传到你的 Release
-      - name: 上传文件
+      # 上传全部文件
+      - name: 上传全部文件
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
