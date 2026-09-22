@@ -11,7 +11,6 @@ on:
           - FlClash
           - v2rayN
           - v2rayNG
-
       version:
         description: "官方 Release Tag，例如 v0.8.98"
         required: true
@@ -27,96 +26,63 @@ jobs:
     steps:
       - name: 设置软件信息
         id: info
-        shell: bash
         run: |
-          SOFTWARE="${{ inputs.software }}"
-          VERSION="${{ inputs.version }}"
+          if [ "${{ inputs.software }}" = "FlClash" ]; then
+            echo "repo=chen08209/FlClash" >> "$GITHUB_OUTPUT"
+          elif [ "${{ inputs.software }}" = "v2rayN" ]; then
+            echo "repo=2dust/v2rayN" >> "$GITHUB_OUTPUT"
+          elif [ "${{ inputs.software }}" = "v2rayNG" ]; then
+            echo "repo=2dust/v2rayNG" >> "$GITHUB_OUTPUT"
+          else
+            echo "未知的软件"
+            exit 1
+          fi
 
-          case "$SOFTWARE" in
-            FlClash)
-              REPO="chen08209/FlClash"
-              ;;
-            v2rayN)
-              REPO="2dust/v2rayN"
-              ;;
-            v2rayNG)
-              REPO="2dust/v2rayNG"
-              ;;
-            *)
-              echo "未知的软件：$SOFTWARE"
-              exit 1
-              ;;
-          esac
-
-          echo "repo=$REPO" >> "$GITHUB_OUTPUT"
-          echo "software=$SOFTWARE" >> "$GITHUB_OUTPUT"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "software=${{ inputs.software }}" >> "$GITHUB_OUTPUT"
+          echo "version=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
 
       - name: 创建临时目录
         run: mkdir -p release-assets
 
-      - name: 下载官方 Release 文件
+      - name: 下载官方 Release
         env:
           GH_TOKEN: ${{ github.token }}
-          REPO: ${{ steps.info.outputs.repo }}
-          VERSION: ${{ steps.info.outputs.version }}
-        shell: bash
         run: |
-          gh release download "$VERSION" \
-            --repo "$REPO" \
+          gh release download "${{ steps.info.outputs.version }}" \
+            --repo "${{ steps.info.outputs.repo }}" \
             --pattern "*.exe" \
             --pattern "*.apk" \
             --pattern "*.zip" \
             --dir release-assets
 
-          echo "获取到的文件："
+      - name: 显示文件
+        run: |
+          echo "下载完成："
           ls -lh release-assets
 
       - name: 检查文件
-        shell: bash
         run: |
           if [ -z "$(find release-assets -type f -print -quit)" ]; then
-            echo "没有找到 .exe、.apk 或 .zip 文件"
+            echo "没有找到需要同步的文件"
             exit 1
           fi
 
-      - name: 创建镜像 Release
+      - name: 创建 Release
         env:
           GH_TOKEN: ${{ github.token }}
-          SOFTWARE: ${{ steps.info.outputs.software }}
-          VERSION: ${{ steps.info.outputs.version }}
-          REPO: ${{ steps.info.outputs.repo }}
-        shell: bash
         run: |
-          TAG="${SOFTWARE,,}-${VERSION}"
+          TAG="$(echo "${{ steps.info.outputs.software }}" | tr '[:upper:]' '[:lower:]')-${{ steps.info.outputs.version }}"
 
           gh release create "$TAG" \
-            --title "$SOFTWARE $VERSION" \
-            --notes "这是 ${SOFTWARE} 官方 Release 的非官方镜像。
+            --title "${{ steps.info.outputs.software }} ${{ steps.info.outputs.version }}" \
+            --notes "非官方镜像。原项目：https://github.com/${{ steps.info.outputs.repo }}"
 
-原项目：
-https://github.com/${REPO}
-
-官方版本：
-${VERSION}
-
-本 Release 未修改原始软件文件。
-
-本仓库与原项目官方开发团队没有隶属关系。
-
-软件版权、许可证及相关声明请以原项目为准。"
-
-      - name: 上传 Release 文件
+      - name: 上传文件
         env:
           GH_TOKEN: ${{ github.token }}
-          SOFTWARE: ${{ steps.info.outputs.software }}
-          VERSION: ${{ steps.info.outputs.version }}
-        shell: bash
         run: |
-          TAG="${SOFTWARE,,}-${VERSION}"
+          TAG="$(echo "${{ steps.info.outputs.software }}" | tr '[:upper:]' '[:lower:]')-${{ steps.info.outputs.version }}"
 
           gh release upload "$TAG" \
             release-assets/* \
             --clobber
-
-          echo "Release 上传完成：$TAG"
