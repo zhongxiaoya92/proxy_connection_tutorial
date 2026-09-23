@@ -8,21 +8,21 @@
 
 A multi-platform proxy client based on ClashMeta,simple and easy to use
 
-- [FlClash 使用教程](./FlClash/)
+- [FlClash 使用教程](./FlClash/index.md)
 - [FlClash Releases](../../releases)
 
 ### v2rayN
 
 A GUI client for Windows, Linux and macOS, support Xray and sing-box and others
 
-- [v2rayN 使用教程](./v2rayN/)
+- [v2rayN 使用教程](./v2rayN/index.md)
 - [v2rayN Releases](../../releases)
 
 ### v2rayNG
 
 A V2Ray client for Android, support Xray core and v2fly core
 
-- [v2rayNG 使用教程](./v2rayNG/)
+- [v2rayNG 使用教程](./v2rayNG/index.md)
 - [v2rayNG Releases](../../releases)
 
 ## 免责声明
