@@ -30,5 +30,3 @@ A V2Ray client for Android, support Xray core and v2fly core
 本仓库主要用于软件使用说明和相关资料整理
 
 软件版权归各自原作者所有
-
-本仓库不修改软件本身
